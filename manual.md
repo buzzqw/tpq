@@ -313,6 +313,10 @@ Editor configurabile in `Preferences > Notes > Editor command` (default: `nano`)
 | Rinomina Tab | Terminal > Set Title | `Ctrl+Shift+S` |
 | Lista Tab | Tabs > [seleziona] | — |
 
+Una volta staccato, il tab diventa una finestra TPQ a se stante con lo stesso
+menu completo (segnali, encoding, read-only, gestore file, scrollbar): non e'
+una vista ridotta del terminale.
+
 ### 7.2 Nuova Finestra
 
 `File > New Window` o `Ctrl+Shift+N` apre una nuova finestra TPQ indipendente.

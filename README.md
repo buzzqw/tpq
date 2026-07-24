@@ -21,29 +21,6 @@ For the complete, in-depth user guide (Italian), see **[manual.md](manual.md)**.
 
 ---
 
-## Screenshots
-
-<!-- Replace with actual screenshots -->
-```
-┌─ TPQ Terminal ──────────────────────────────────────────────────┐
-│ File  Edit  View  Terminal  Tabs  Help                         │
-│ [New Tab] [New Window] | [Copy] [Paste] | TPQ — Terminal       │
-├─────────────────────────────────────────────────────────────────┤
-│ Terminal 1 │ Terminal 2 × │                                    │
-├─────────────────────────────────────────────────────────────────┤
-│ user@host:~$ /connect                                          │
-│                                                                │
-│ Available providers:                                           │
-│   [1] ● DeepSeek (Pro)                                        │
-│   [2] ● Ollama (Local) (llama3.2:3b) [1 models]               │
-│ Press Alt+1..9 to select a provider.                           │
-│                                                                │
-│ user@host:~$ █                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
 ## Features
 
 ### Core Terminal
@@ -64,26 +41,14 @@ For the complete, in-depth user guide (Italian), see **[manual.md](manual.md)**.
   SIGUSR1, SIGUSR2
 
 ### AI Chat (built-in)
-- `/ai` — Enter AI chat mode directly in the terminal
-- `/ai off` — Return to shell
+- `/ai` — Chat with an AI provider directly in the terminal, `/ai off` to return to the shell
 - `/connect [provider]` — Interactive provider/model selection
-- Supports **6 providers**:
+- 6 providers supported: OpenAI, Claude, Gemini, DeepSeek, Ollama (local, no
+  API key needed), and any OpenAI-compatible Custom endpoint
+- Auto-detects installed Ollama models and OpenAI-compatible endpoints
 
-| Provider | Type | Default Model | API Key |
-|----------|------|----------------|---------|
-| **OpenAI** | Cloud | `gpt-4o` | Required |
-| **Claude** (Anthropic) | Cloud | `claude-sonnet-4-20250514` | Required |
-| **Gemini** (Google) | Cloud | `gemini-2.5-flash` | Required |
-| **DeepSeek** | Cloud | `deepseek-chat` | Required |
-| **Ollama** | Local | `llama3` | Not required |
-| **Custom API** | Local/Any | configurable | Optional |
-
-- **Auto-detection** of installed Ollama models and OpenAI-compatible endpoints
-  (queries `/api/tags` or `/models`)
-- Interactive model selection with `1`–`9` (or `Alt+1..9`)
-- Responses stream token-by-token for OpenAI, Claude, DeepSeek, Ollama and
-  Custom; **Gemini replies arrive as a single block** (Google's REST
-  `generateContent` endpoint isn't incremental), not word-by-word
+See **[manual.md](manual.md#4-ai-chat)** for provider setup, default models,
+and configuration details.
 
 ### Smart Commands
 | Command | Description |
@@ -126,7 +91,10 @@ chmod +x setup.sh
 ```
 
 The setup script installs [uv](https://docs.astral.sh/uv/), creates a virtual
-environment, and installs all Python dependencies automatically.
+environment, and installs all Python dependencies automatically. It
+recognizes Debian/Ubuntu, Fedora/RHEL/CentOS/Rocky/Alma, Arch (and
+derivatives like Manjaro/EndeavourOS), openSUSE, Alpine, and Void, and falls
+back to installing PyQt6 straight from PyPI on anything else.
 
 ### Manual Install
 ```bash
@@ -164,30 +132,6 @@ Appearance, Colors, Compatibility, AI, Notes, About), including:
 - Encoding, backspace/delete key bindings
 - Notes directory, default file, and editor
 - Scrollback, scrollbar position
-
-### AI Setup Example
-```json
-{
-  "ai_keys": {
-    "openai": "sk-...",
-    "deepseek": "sk-..."
-  },
-  "ai_models": {
-    "openai": "gpt-4o",
-    "ollama": "llama3.2:3b"
-  },
-  "ai_urls": {
-    "ollama": "http://localhost:11434/v1/chat/completions"
-  }
-}
-```
-
-Then in TPQ:
-```
-/connect           → choose from configured providers
-/connect ollama    → show Ollama models
-/ai                → start chatting
-```
 
 ---
 
@@ -247,11 +191,22 @@ tpq/
 │   ├── settings.py         # JSON config singleton
 │   ├── settings_dialog.py  # Full preferences GUI (7 tabs)
 │   └── menus.py            # xfce4-terminal-compatible menu bar
+├── tests/                 # pytest suite (history, notes, AI client)
 ├── pyproject.toml         # Python project metadata
 ├── setup.sh               # One-command installer
 ├── tpq.sh                 # Launcher script
 ├── README.md              # This file
 └── manual.md              # Full user manual (Italian)
+```
+
+---
+
+## Development
+
+```bash
+source .venv/bin/activate
+uv pip install pytest
+pytest tests/
 ```
 
 ---

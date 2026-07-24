@@ -4,13 +4,12 @@ import signal
 import struct
 import fcntl
 import termios
-from collections import deque
 
-from PyQt6.QtWidgets import QWidget, QScrollBar
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRect, QPoint, QEvent
+from PyQt6.QtWidgets import QWidget, QScrollBar, QMessageBox
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QRect, QPoint, QEvent
 from PyQt6.QtGui import (
-    QPainter, QFont, QColor, QFontMetrics, QFontDatabase,
-    QKeyEvent, QMouseEvent, QWheelEvent, QPixmap
+    QPainter, QFont, QColor, QFontMetrics,
+    QKeyEvent, QMouseEvent, QWheelEvent
 )
 
 import pyte
@@ -54,6 +53,48 @@ def _get_clipboard():
         from PyQt6.QtWidgets import QApplication
         CLIPBOARD = QApplication.clipboard()
     return CLIPBOARD
+
+
+class _FuncWorker(QThread):
+    """Runs a blocking callable (network I/O) off the UI thread and reports
+    the result (or the raised exception) back via a signal."""
+
+    done = pyqtSignal(object)
+
+    def __init__(self, func, *args, **kwargs):
+        super().__init__()
+        self._func = func
+        self._args = args
+        self._kwargs = kwargs
+
+    def run(self):
+        try:
+            result = self._func(*self._args, **self._kwargs)
+        except Exception as e:
+            result = e
+        self.done.emit(result)
+
+
+class _AIStreamWorker(QThread):
+    """Pulls tokens from an AIClient.chat_stream() generator (blocking
+    network I/O) off the UI thread, emitting one signal per token."""
+
+    token_received = pyqtSignal(str)
+    finished_ok = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, ai_client, message):
+        super().__init__()
+        self._ai_client = ai_client
+        self._message = message
+
+    def run(self):
+        try:
+            for token in self._ai_client.chat_stream(self._message):
+                self.token_received.emit(token)
+            self.finished_ok.emit()
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class TerminalWidget(QWidget):
@@ -138,12 +179,20 @@ class TerminalWidget(QWidget):
         self._connect_url = ""
         self._connect_model = ""
         self._tpq_input_mode = False
+        self._async_pending = False
+        self._provider_worker = None
+        self._model_worker = None
+        self._ai_worker = None
+        self._ai_busy = False
+        self._ai_first_token = True
+        self._orphaned_workers = []
         self._auto_scroll_timer = QTimer(self)
         self._auto_scroll_timer.timeout.connect(self._auto_scroll)
         self._auto_scroll_delta = 0
         self._last_mouse_pos = None
         self._mouse_tracking = False
         self._scrollbar_visible = True
+        self._read_only = False
 
         self._scrollbar = QScrollBar(Qt.Orientation.Vertical, self)
         self._scrollbar.setRange(0, 0)
@@ -173,8 +222,10 @@ class TerminalWidget(QWidget):
         os.environ["TERM"] = "xterm-256color"
         os.environ["COLORTERM"] = "truecolor"
         os.environ["LANG"] = os.environ.get("LANG", "en_US.UTF-8")
+        login = self._settings.get("login_shell", True)
+        argv0 = ("-" + os.path.basename(shell)) if login else shell
         try:
-            os.execvpe(shell, [shell], os.environ)
+            os.execvpe(shell, [argv0], os.environ)
         except OSError:
             os.execvpe("/bin/sh", ["/bin/sh"], os.environ)
 
@@ -513,6 +564,12 @@ class TerminalWidget(QWidget):
         key = event.key()
         modifiers = event.modifiers()
 
+        if self._read_only:
+            shift_ctrl = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+            if key == Qt.Key.Key_C and (modifiers & shift_ctrl) == shift_ctrl:
+                self.copy()
+            return
+
         if self._history_search_mode:
             self._handle_history_search_key(event)
             return
@@ -531,6 +588,9 @@ class TerminalWidget(QWidget):
             self._tpq_input_mode = False
             self._provider_list = []
             self._model_list = []
+            self._async_pending = False
+            self._provider_worker = None
+            self._model_worker = None
             return
 
         if (modifiers & Qt.KeyboardModifier.AltModifier):
@@ -640,6 +700,14 @@ class TerminalWidget(QWidget):
         key = event.key()
         text = event.text()
 
+        if self._async_pending:
+            # A /connect network check is running in the background — only
+            # Esc does anything until it reports back, to avoid keystrokes
+            # leaking through to the shell mid-wait.
+            if key == Qt.Key.Key_Escape:
+                self._cancel_async_wait()
+            return
+
         if self._provider_list or self._model_list or self._history_show_results:
             text = event.text()
             if key == Qt.Key.Key_Escape:
@@ -661,6 +729,12 @@ class TerminalWidget(QWidget):
                         self._select_model_number(num)
                     elif self._history_show_results:
                         self._replay_history_number(num)
+                    if self._provider_list or self._model_list or self._history_show_results or self._async_pending:
+                        # The selection produced a follow-up list (or kicked
+                        # off a background model fetch, e.g. picking a
+                        # multi-model provider) — stay in TPQ input mode.
+                        self.update()
+                        return
                     self._tpq_input_mode = False
                     self._stream.feed("\r\n")
                     self._send_to_child(b'\n')
@@ -689,7 +763,7 @@ class TerminalWidget(QWidget):
             self._stream.feed("\r\n")
             self._handle_tpq_command(cmd)
             self._input_shadow = ""
-            if self._provider_list or self._model_list or self._history_show_results:
+            if self._provider_list or self._model_list or self._history_show_results or self._async_pending:
                 self.update()
                 return
             self._tpq_input_mode = False
@@ -703,8 +777,6 @@ class TerminalWidget(QWidget):
             key == Qt.Key.Key_C and (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
         ):
             self._tpq_input_mode = False
-            col = self._screen.cursor.x
-            row = self._screen.cursor.y
             for _ in range(len(self._input_shadow)):
                 self._stream.feed('\b \b')
             self._input_shadow = ""
@@ -818,6 +890,18 @@ class TerminalWidget(QWidget):
         self._connect_to_provider(provider)
 
     def _show_provider_list(self):
+        self._stream.feed("\x1b[37mChecking configured providers...\x1b[0m\r\n")
+        self.update()
+        self._async_pending = True
+        worker = _FuncWorker(self._compute_provider_list)
+        self._provider_worker = worker
+        worker.done.connect(lambda result, w=worker: self._on_provider_list_ready(result, w))
+        worker.start()
+
+    def _compute_provider_list(self):
+        # Runs on a background thread (via _FuncWorker) — must not touch
+        # any Qt widget state, only self._ping_provider/_fetch_models
+        # (pure requests calls) and read-only settings access.
         from tpq.ai_client import AIClient
         available = []
         keys = self._settings.get("ai_keys", {})
@@ -841,11 +925,24 @@ class TerminalWidget(QWidget):
                     model = models.get(provider, "") or info["default_model"]
                     label = f"{info['name']} ({model})"
                     available.append((provider, label, info, []))
+        return available
+
+    def _on_provider_list_ready(self, available, worker):
+        if worker is not self._provider_worker:
+            return  # stale result from a cancelled/superseded request
+        self._provider_worker = None
+        self._async_pending = False
+
+        if isinstance(available, Exception):
+            self._stream.feed(f"\x1b[31mError checking providers: {available}\x1b[0m\r\n")
+            self._exit_tpq_async_wait()
+            return
 
         if not available:
             self._stream.feed("\x1b[33mNo providers configured.\x1b[0m\r\n")
             self._stream.feed("\x1b[37mSet API keys in Preferences > AI or in ~/.config/tpq/settings.json\x1b[0m\r\n")
             self._stream.feed("\x1b[37mFor Ollama: install ollama and run 'ollama serve'\x1b[0m\r\n")
+            self._exit_tpq_async_wait()
             return
 
         self._stream.feed("\x1b[1;37mAvailable providers:\x1b[0m\r\n")
@@ -856,6 +953,28 @@ class TerminalWidget(QWidget):
             self._stream.feed(f"  \x1b[1;33m[{num}]\x1b[0m {icon} {label}\r\n")
             self._provider_list.append((num, prov, fetched))
         self._stream.feed("\x1b[37mPress 1..9 to select a provider, Esc to cancel.\x1b[0m\r\n")
+        self.update()
+
+    def _exit_tpq_async_wait(self):
+        """Ends a pending /connect network wait exactly like the Return-key
+        handler would have if the result had come back synchronously."""
+        self._tpq_input_mode = False
+        if not self._ai_mode:
+            self._stream.feed("\r\n")
+            self._send_to_child(b'\n')
+        self.update()
+
+    def _cancel_async_wait(self):
+        self._async_pending = False
+        self._provider_worker = None
+        self._model_worker = None
+        self._provider_list = []
+        self._model_list = []
+        self._stream.feed("\r\n\x1b[37mCancelled.\x1b[0m\r\n")
+        self._tpq_input_mode = False
+        self._send_to_child(b'\n')
+        self._input_shadow = ""
+        self.update()
 
     def _ping_provider(self, provider: str, url: str) -> bool:
         try:
@@ -899,9 +1018,33 @@ class TerminalWidget(QWidget):
             self._stream.feed(f"\x1b[33mNo API key set for {provider}.\x1b[0m\r\n")
             return
 
-        models = self._fetch_models(provider, key, base_url)
+        self._connect_provider = provider
+        self._connect_key = key
+        self._connect_url = base_url
+        self._connect_model = model
+
+        self._stream.feed(f"\x1b[37mConnecting to {info['name']}...\x1b[0m\r\n")
+        self.update()
+        self._async_pending = True
+        worker = _FuncWorker(self._fetch_models, provider, key, base_url)
+        self._model_worker = worker
+        worker.done.connect(
+            lambda result, w=worker: self._on_models_fetched(provider, key, model, base_url, result, w)
+        )
+        worker.start()
+
+    def _on_models_fetched(self, provider, key, model, base_url, models, worker):
+        if worker is not self._model_worker:
+            return  # stale result from a cancelled/superseded request
+        self._model_worker = None
+        self._async_pending = False
+
+        if isinstance(models, Exception):
+            models = []
 
         if models and len(models) > 1:
+            from tpq.ai_client import AIClient
+            info = AIClient.PROVIDERS[provider]
             self._stream.feed(f"\x1b[1;37m{info['name']} — {len(models)} models:\x1b[0m\r\n")
             self._model_list = []
             for i, m in enumerate(models[:9]):
@@ -910,13 +1053,11 @@ class TerminalWidget(QWidget):
                 self._stream.feed(f"  \x1b[1;33m[{num}]\x1b[0m {m}{marker}\r\n")
                 self._model_list.append((num, m))
             self._stream.feed("\x1b[37mPress 1..9 to select, any other key for default.\x1b[0m\r\n")
-            self._connect_provider = provider
-            self._connect_key = key
-            self._connect_url = base_url
-            self._connect_model = model
+            self.update()
         else:
             chosen = models[0] if models else model
             self._do_connect(provider, key, chosen, base_url)
+            self._exit_tpq_async_wait()
 
     def _fetch_models(self, provider: str, api_key: str, base_url: str):
         try:
@@ -1038,6 +1179,11 @@ class TerminalWidget(QWidget):
     def _exit_ai_mode(self):
         self._ai_mode = False
         self._ai_input = ""
+        # Any in-flight AI reply becomes orphaned: it keeps running in the
+        # background but its result is discarded (identity check in the
+        # completion handlers) rather than being fed into the shell screen.
+        self._ai_worker = None
+        self._ai_busy = False
         self._stream.feed("\r\n\x1b[1;35m=== AI Chat Ended ===\x1b[0m\r\n")
         self._send_to_child(b'\n')
         self.update()
@@ -1056,6 +1202,12 @@ class TerminalWidget(QWidget):
                 return
             if not message:
                 self._stream.feed("\x1b[35mYou>\x1b[0m ")
+                self.update()
+                return
+            if self._ai_busy:
+                self._stream.feed("\x1b[33mStill waiting for a reply, please wait...\x1b[0m\r\n")
+                self._stream.feed("\x1b[35mYou>\x1b[0m ")
+                self._ai_input = ""
                 self.update()
                 return
             self._ai_input = ""
@@ -1082,29 +1234,42 @@ class TerminalWidget(QWidget):
             return
 
     def _process_ai_message(self, message: str):
-        from PyQt6.QtWidgets import QApplication
-
         self._stream.feed("\x1b[36mAI>\x1b[0m \x1b[33m● Thinking\x1b[0m")
         self.update()
-        QApplication.processEvents()
 
-        try:
-            stream = self._ai_client.chat_stream(message)
-            first_token = True
-            for token in stream:
-                if first_token:
-                    first_token = False
-                    self._stream.feed(f"\r\x1b[36mAI>\x1b[0m ")
-                self._stream.feed(token)
-                self.update()
-                QApplication.processEvents()
-        except Exception as e:
-            self._stream.feed(f"\r\x1b[31mError: {e}\x1b[0m\r\n")
-            self._stream.feed("\x1b[35mYou>\x1b[0m ")
-            self.update()
+        self._ai_busy = True
+        self._ai_first_token = True
+        worker = _AIStreamWorker(self._ai_client, message)
+        self._ai_worker = worker
+        worker.token_received.connect(lambda token, w=worker: self._on_ai_token(token, w))
+        worker.finished_ok.connect(lambda w=worker: self._on_ai_finished(w))
+        worker.error.connect(lambda err, w=worker: self._on_ai_error(err, w))
+        worker.start()
+
+    def _on_ai_token(self, token, worker):
+        if worker is not self._ai_worker:
+            return  # stale token from a reply we've since left/replaced
+        if self._ai_first_token:
+            self._ai_first_token = False
+            self._stream.feed("\r\x1b[36mAI>\x1b[0m ")
+        self._stream.feed(token)
+        self.update()
+
+    def _on_ai_finished(self, worker):
+        if worker is not self._ai_worker:
             return
-
+        self._ai_worker = None
+        self._ai_busy = False
         self._stream.feed("\r\n\r\n\x1b[35mYou>\x1b[0m ")
+        self.update()
+
+    def _on_ai_error(self, err, worker):
+        if worker is not self._ai_worker:
+            return
+        self._ai_worker = None
+        self._ai_busy = False
+        self._stream.feed(f"\r\x1b[31mError: {err}\x1b[0m\r\n")
+        self._stream.feed("\x1b[35mYou>\x1b[0m ")
         self.update()
 
     def _start_history_search(self):
@@ -1295,20 +1460,42 @@ class TerminalWidget(QWidget):
                 cb.setText(text)
 
     def paste(self):
+        if self._read_only:
+            return
         cb = _get_clipboard()
         if cb:
             text = cb.text()
-            if text:
+            if text and self._confirm_paste(text):
                 self._send_to_child(text.encode('utf-8'))
                 self._input_shadow = ""
 
     def paste_selection(self):
+        if self._read_only:
+            return
         cb = _get_clipboard()
         if cb:
             text = cb.text(cb.Mode.Selection)
-            if text:
+            if text and self._confirm_paste(text):
                 self._send_to_child(text.encode('utf-8'))
                 self._input_shadow = ""
+
+    def set_read_only(self, value: bool):
+        self._read_only = bool(value)
+
+    def _confirm_paste(self, text: str) -> bool:
+        if not self._settings.get("show_unsafe_paste_dialog", True):
+            return True
+        if '\n' not in text and '\r' not in text:
+            return True
+        reply = QMessageBox.warning(
+            self, "Unsafe Paste",
+            "The pasted text contains multiple lines and may run more than "
+            "one command automatically as soon as it's sent to the shell.\n\n"
+            "Paste anyway?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
 
     def _selection_to_text(self) -> str:
         if not self._sel_start or not self._sel_end:
@@ -1446,7 +1633,32 @@ class TerminalWidget(QWidget):
             except (ProcessLookupError, OSError):
                 pass
 
+    def _retire_worker(self, worker):
+        """Detach a background worker from this widget instead of waiting on
+        it: disconnect the signals that would call back into us (this widget
+        may be destroyed before the network request finishes) while keeping
+        a reference alive until the OS thread actually finishes, so a live
+        QThread is never garbage-collected out from under itself."""
+        for sig_name in ("done", "token_received", "finished_ok", "error"):
+            sig = getattr(worker, sig_name, None)
+            if sig is not None:
+                try:
+                    sig.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
+        self._orphaned_workers.append(worker)
+        worker.finished.connect(lambda w=worker: self._orphaned_workers.remove(w)
+                                 if w in self._orphaned_workers else None)
+
     def close_terminal(self):
+        for attr in ("_provider_worker", "_model_worker", "_ai_worker"):
+            worker = getattr(self, attr, None)
+            if worker is not None:
+                self._retire_worker(worker)
+                setattr(self, attr, None)
+        self._async_pending = False
+        self._ai_busy = False
+
         self._cursor_timer.stop()
         self._read_timer.stop()
         self._auto_scroll_timer.stop()

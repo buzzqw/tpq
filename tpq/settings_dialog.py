@@ -2,11 +2,10 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
     QLabel, QLineEdit, QSpinBox, QComboBox, QCheckBox, QPushButton,
     QFileDialog, QFormLayout, QGroupBox, QDoubleSpinBox, QDialogButtonBox,
-    QSlider, QMessageBox, QColorDialog, QGridLayout, QScrollArea, QFrame,
-    QRadioButton
+    QMessageBox, QColorDialog, QGridLayout, QScrollArea, QFrame,
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtGui import QColor
 
 from tpq.settings import Settings, COLOR_PALETTES
 

@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import datetime
-import json
 
 
 HISTORY_DIR = os.path.join(os.path.expanduser("~"), ".config", "tpq")
@@ -9,8 +8,13 @@ HISTORY_DB = os.path.join(HISTORY_DIR, "history.db")
 
 
 class HistoryManager:
+    # How many inserts to batch before re-checking whether the table needs
+    # trimming — avoids a COUNT(*) table scan on every single command.
+    TRIM_CHECK_INTERVAL = 50
+
     def __init__(self):
         os.makedirs(HISTORY_DIR, exist_ok=True)
+        self._inserts_since_trim = 0
         self._conn = sqlite3.connect(HISTORY_DB, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
@@ -35,7 +39,10 @@ class HistoryManager:
             (command, cwd, exit_code, ts),
         )
         self._conn.commit()
-        self._trim()
+        self._inserts_since_trim += 1
+        if self._inserts_since_trim >= self.TRIM_CHECK_INTERVAL:
+            self._inserts_since_trim = 0
+            self._trim()
 
     def search(self, terms: str, limit: int = 50):
         if not terms.strip():

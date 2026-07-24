@@ -1,6 +1,5 @@
 import os
 import json
-import shutil
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "tpq")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "settings.json")
@@ -122,8 +121,10 @@ class Settings:
         if self._loaded:
             return
         os.makedirs(CONFIG_DIR, exist_ok=True)
+        os.chmod(CONFIG_DIR, 0o700)
         if os.path.exists(CONFIG_FILE):
             try:
+                os.chmod(CONFIG_FILE, 0o600)
                 with open(CONFIG_FILE, "r") as f:
                     data = json.load(f)
                 for key in DEFAULTS:
@@ -137,8 +138,10 @@ class Settings:
 
     def save(self):
         os.makedirs(CONFIG_DIR, exist_ok=True)
+        os.chmod(CONFIG_DIR, 0o700)
         with open(CONFIG_FILE, "w") as f:
             json.dump(self._data, f, indent=2)
+        os.chmod(CONFIG_FILE, 0o600)
 
     def get(self, key, default=None):
         return self._data.get(key, default)

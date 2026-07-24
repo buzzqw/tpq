@@ -5,17 +5,28 @@ import subprocess
 import signal
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout,
-    QMessageBox, QInputDialog, QMenu, QScrollBar, QSplitter,
-    QToolBar, QStyle, QLabel
+    QApplication, QMainWindow, QTabWidget,
+    QMessageBox, QInputDialog,
+    QToolBar, QLabel
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
-from PyQt6.QtGui import QAction, QIcon, QKeySequence, QColor
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QAction
 
 from tpq.settings import Settings
 from tpq.terminal import TerminalWidget
 from tpq.settings_dialog import SettingsDialog
 from tpq.menus import create_menubar
+
+
+def _detect_file_manager(settings: Settings) -> str:
+    fm = settings.get("file_manager", "")
+    if fm and shutil.which(fm):
+        return fm
+    for candidate in ["nemo", "thunar", "dolphin", "nautilus", "pcmanfm",
+                      "caja", "nemo-desktop", "spacefm"]:
+        if shutil.which(candidate):
+            return candidate
+    return ""
 
 
 class MainWindow(QMainWindow):
@@ -43,7 +54,6 @@ class MainWindow(QMainWindow):
         self._action_show_scrollbar = None
         self._action_read_only = None
         self._encoding_actions = []
-        self._read_only = False
 
         self.setCentralWidget(self._tabs)
 
@@ -125,7 +135,10 @@ class MainWindow(QMainWindow):
             term.setFocus()
             self._toolbar_title.setText(f"TPQ — {self._tabs.tabText(index)}")
             if self._action_read_only:
-                self._action_read_only.setChecked(self._read_only)
+                # Read-only is a per-tab property (each TerminalWidget tracks
+                # its own state) — reflect the newly focused tab's own flag,
+                # not a single window-wide value.
+                self._action_read_only.setChecked(term._read_only)
         self._update_tabs_menu()
 
     def _update_tabs_menu(self):
@@ -262,18 +275,17 @@ class MainWindow(QMainWindow):
         new_win.show()
 
     def toggle_read_only(self, checked: bool):
-        self._read_only = checked
         term = self._current_terminal()
         if term:
+            term.set_read_only(checked)
             if checked:
-                term._send_to_child(b'\x1b[2J\x1b[H')
                 term._stream.feed(
                     "\x1b[1;33m=== READ-ONLY MODE ===\x1b[0m\r\n"
                     "\x1b[37mTerminal is read-only. Input is disabled.\x1b[0m\r\n"
                 )
-                term.update()
             else:
                 term._send_to_child(b'\n')
+            term.update()
 
     def toggle_tabs_visibility(self, visible: bool):
         self._tabs.tabBar().setVisible(visible)
@@ -338,18 +350,8 @@ class MainWindow(QMainWindow):
 
         event.accept()
 
-    def _detect_file_manager(self) -> str:
-        fm = self._settings.get("file_manager", "")
-        if fm and shutil.which(fm):
-            return fm
-        for candidate in ["nemo", "thunar", "dolphin", "nautilus", "pcmanfm",
-                          "caja", "nemo-desktop", "spacefm"]:
-            if shutil.which(candidate):
-                return candidate
-        return ""
-
     def open_file_manager(self):
-        fm = self._detect_file_manager()
+        fm = _detect_file_manager(self._settings)
         if not fm:
             QMessageBox.warning(self, "File Manager",
                                 "No file manager found.\nInstall nemo, thunar, dolphin, or nautilus.")
@@ -407,6 +409,9 @@ class DetachedWindow(QMainWindow):
         self._encoding_actions = []
         self.setCentralWidget(self._terminal)
         self.setMenuBar(create_menubar(self, self._terminal))
+        self._storage_menubar = self.menuBar()
+        if self._action_read_only:
+            self._action_read_only.setChecked(self._terminal._read_only)
 
     def _current_terminal(self):
         return self._terminal
@@ -415,7 +420,7 @@ class DetachedWindow(QMainWindow):
         pass
 
     def new_window(self):
-        pass
+        subprocess.Popen([sys.executable, "-m", "tpq"], start_new_session=True)
 
     def close_tab(self):
         self.close()
@@ -479,16 +484,31 @@ class DetachedWindow(QMainWindow):
         pass
 
     def toggle_read_only(self, checked: bool):
-        pass
+        self._terminal.set_read_only(checked)
+        if checked:
+            self._terminal._stream.feed(
+                "\x1b[1;33m=== READ-ONLY MODE ===\x1b[0m\r\n"
+                "\x1b[37mTerminal is read-only. Input is disabled.\x1b[0m\r\n"
+            )
+        else:
+            self._terminal._send_to_child(b'\n')
+        self._terminal.update()
 
     def toggle_tabs_visibility(self, visible: bool):
         pass
 
     def toggle_menubar_visibility(self, visible: bool):
-        pass
+        if visible:
+            self.setMenuBar(self._storage_menubar)
+        else:
+            self._storage_menubar = self.menuBar()
+            self.setMenuBar(None)
 
     def toggle_scrollbar_visibility(self, visible: bool):
-        pass
+        self._terminal.set_scrollbar_visible(visible)
+
+    def toggle_toolbar_visibility(self, visible: bool):
+        pass  # detached windows have no toolbar
 
     def set_title_dialog(self):
         title, ok = QInputDialog.getText(self, "Set Title", "Terminal title:", text=self.windowTitle())
@@ -505,13 +525,34 @@ class DetachedWindow(QMainWindow):
         )
 
     def open_file_manager(self):
-        pass
+        fm = _detect_file_manager(self._settings)
+        if not fm:
+            QMessageBox.warning(self, "File Manager",
+                                "No file manager found.\nInstall nemo, thunar, dolphin, or nautilus.")
+            return
+        cwd = self._terminal.get_cwd()
+        subprocess.Popen([fm, cwd], start_new_session=True)
 
     def set_encoding(self, encoding: str):
-        pass
+        self._terminal.set_encoding(encoding)
+        current = self.windowTitle().split(" [")[0]
+        self.setWindowTitle(f"{current} [{encoding}]")
+        self._settings.set("encoding", encoding)
 
     def send_signal(self, sig: int):
-        pass
+        term = self._terminal
+        term.kill_process(sig)
+        sig_names = {
+            signal.SIGTERM: "SIGTERM",
+            signal.SIGKILL: "SIGKILL",
+            signal.SIGHUP: "SIGHUP",
+            signal.SIGINT: "SIGINT",
+            signal.SIGQUIT: "SIGQUIT",
+        }
+        name = sig_names.get(sig, f"signal {sig}")
+        term._stream.feed(f"\r\n\x1b[33mSent {name} to process {term._child_pid}\x1b[0m\r\n")
+        term._send_to_child(b'\n')
+        term.update()
 
     def _update_tabs_menu(self):
         pass

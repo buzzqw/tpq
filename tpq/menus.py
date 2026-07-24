@@ -1,7 +1,6 @@
 import signal
-from PyQt6.QtWidgets import QMenuBar, QMenu, QApplication
+from PyQt6.QtWidgets import QMenuBar
 from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtCore import Qt
 
 
 SIGNALS = [
@@ -106,7 +105,7 @@ def create_menubar(parent, terminal_widget):
 
     show_tabs_action = QAction("Always Show &Tabs", parent)
     show_tabs_action.setCheckable(True)
-    show_tabs_action.setChecked(parent._tabs.isVisible())
+    show_tabs_action.setChecked(parent._tabs.isVisible() if hasattr(parent, "_tabs") else False)
     show_tabs_action.triggered.connect(parent.toggle_tabs_visibility)
     view_menu.addAction(show_tabs_action)
     parent._action_show_tabs = show_tabs_action
@@ -127,7 +126,7 @@ def create_menubar(parent, terminal_widget):
 
     show_toolbar_action = QAction("Always Show &Toolbar", parent)
     show_toolbar_action.setCheckable(True)
-    show_toolbar_action.setChecked(parent._toolbar.isVisible())
+    show_toolbar_action.setChecked(parent._toolbar.isVisible() if hasattr(parent, "_toolbar") else False)
     show_toolbar_action.triggered.connect(parent.toggle_toolbar_visibility)
     view_menu.addAction(show_toolbar_action)
     parent._action_show_toolbar = show_toolbar_action
