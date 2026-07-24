@@ -20,7 +20,7 @@ DISTRO_MATCH="$OS_ID $OS_ID_LIKE"
 
 # --- Install uv if missing ---
 if ! command -v uv &>/dev/null; then
-    echo "[1/4] Installing uv (Python package manager)..."
+    echo "[1/5] Installing uv (Python package manager)..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
     if ! command -v uv &>/dev/null; then
@@ -30,11 +30,11 @@ if ! command -v uv &>/dev/null; then
     fi
     echo "       uv installed: $(uv --version)"
 else
-    echo "[1/4] uv already installed: $(uv --version)"
+    echo "[1/5] uv already installed: $(uv --version)"
 fi
 
 # --- System dependencies (best-effort; uv/pip install below is the real fallback) ---
-echo "[2/4] Checking system dependencies (PyQt6)..."
+echo "[2/5] Checking system dependencies (PyQt6)..."
 
 install_with_apt() {
     dpkg -s python3-pyqt6 &>/dev/null && return 0
@@ -110,7 +110,7 @@ case "$DISTRO_MATCH" in
 esac
 
 # --- Create virtual environment ---
-echo "[3/4] Creating virtual environment..."
+echo "[3/5] Creating virtual environment..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 
@@ -125,8 +125,32 @@ source "$VENV_DIR/bin/activate"
 # --- Install Python packages ---
 # PyQt6 wheels from PyPI bundle their own Qt6 libraries, so this works even
 # when the system-package step above was skipped or failed.
-echo "[4/4] Installing Python packages..."
+echo "[4/5] Installing Python packages..."
 uv pip install --python "$VENV_DIR/bin/python" pyte requests PyQt6
+
+# --- Create desktop menu entry (Linux only) ---
+echo "[5/5] Creating application menu entry..."
+if [ "$(uname -s)" = "Linux" ]; then
+    DESKTOP_DIR="$HOME/.local/share/applications"
+    DESKTOP_FILE="$DESKTOP_DIR/tpq-terminal.desktop"
+    mkdir -p "$DESKTOP_DIR"
+    cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Name=TPQ Terminal
+Comment=Terminale Python Qt con chat AI, ricerca cronologia e note
+Exec=$SCRIPT_DIR/tpq.sh
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupNotify=false
+EOF
+    chmod +x "$DESKTOP_FILE"
+    command -v update-desktop-database &>/dev/null && update-desktop-database "$DESKTOP_DIR" &>/dev/null
+    echo "       Menu entry created: $DESKTOP_FILE"
+else
+    echo "       Skipped (menu entries are only created on Linux)."
+fi
 
 echo ""
 echo "========================================"
