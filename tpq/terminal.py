@@ -241,30 +241,30 @@ class TerminalWidget(QWidget):
             return
         max_lines = self._screen.lines
 
-        old_count = sum(1 for r in old_buf if r < max_lines)
-        new_count = sum(1 for r in new_buf if r < max_lines)
-        if old_count == 0 or new_count == 0:
+        def _row_str(buf, r):
+            row = buf.get(r, {})
+            if not row:
+                return ""
+            return "".join(row.get(c, self._screen.default_char).data
+                          for c in range(self._screen.columns))
+
+        old_top = _row_str(old_buf, 0)
+        if not old_top.strip():
             return
 
-        for shift in range(1, max_lines + 1):
-            match = True
-            pairs = 0
-            for r in range(shift, max_lines):
-                if r not in old_buf and (r - shift) not in new_buf:
-                    continue
-                pairs += 1
-                old_row = old_buf.get(r, {})
-                new_row = new_buf.get(r - shift, {})
-                if old_row != new_row:
-                    match = False
-                    break
-            if pairs > 0 and match:
-                for s in range(shift):
-                    if s in old_buf and old_buf[s]:
-                        line = [old_buf[s].get(c, self._screen.default_char)
-                                for c in range(self._screen.columns)]
-                        self._scrollback.append(line)
-                return
+        shift = None
+        for s in range(1, max_lines):
+            if _row_str(new_buf, 0) == _row_str(old_buf, s):
+                shift = s
+                break
+
+        if shift is None:
+            return
+
+        for s in range(shift):
+            line = [old_buf.get(s, {}).get(c, self._screen.default_char)
+                    for c in range(self._screen.columns)]
+            self._scrollback.append(line)
 
     def _read_from_child(self):
         if self._master_fd is None:
@@ -304,7 +304,8 @@ class TerminalWidget(QWidget):
         self._stream.feed(text)
         new_buf = self._snapshot_buffer()
         self._detect_scroll(old_buf, new_buf)
-        self._scroll_offset = 0
+        if self._settings.get("scroll_on_output", True):
+            self._scroll_offset = 0
 
         max_scroll = self._settings.get("scrollback_lines", 5000)
         if max_scroll > 0 and len(self._scrollback) > max_scroll:
@@ -340,6 +341,11 @@ class TerminalWidget(QWidget):
                 data = data[n:]
         except OSError:
             pass
+
+    def _send_key_to_child(self, data: bytes):
+        if self._settings.get("scroll_on_keystroke", True):
+            self._scroll_offset = 0
+        self._send_to_child(data)
 
     def _update_size(self):
         if self._master_fd is None:
@@ -579,11 +585,11 @@ class TerminalWidget(QWidget):
             return
 
         if key == Qt.Key.Key_L and modifiers == Qt.KeyboardModifier.ControlModifier:
-            self._send_to_child(b'\x0c')
+            self._send_key_to_child(b'\x0c')
             return
 
         if key == Qt.Key.Key_C and (modifiers & Qt.KeyboardModifier.ControlModifier):
-            self._send_to_child(b'\x03')
+            self._send_key_to_child(b'\x03')
             self._input_shadow = ""
             self._tpq_input_mode = False
             self._provider_list = []
@@ -679,6 +685,8 @@ class TerminalWidget(QWidget):
 
         text = event.text()
         if text and len(text) == 1:
+            if self._settings.get("scroll_on_keystroke", True):
+                self._scroll_offset = 0
             if key == Qt.Key.Key_Tab:
                 self._send_to_child(b'\t')
                 return
@@ -1348,6 +1356,7 @@ class TerminalWidget(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             self._selecting = True
+            self.grabMouse()
             col, abs_row = self._pos_to_cell(event.pos())
             self._sel_start = (col, abs_row)
             self._sel_end = (col, abs_row)
@@ -1373,6 +1382,7 @@ class TerminalWidget(QWidget):
             self._selecting = False
             self._auto_scroll_timer.stop()
             self._auto_scroll_delta = 0
+            self.releaseMouse()
             if self._settings.get("auto_copy_selection", True):
                 self.copy()
 
@@ -1385,14 +1395,15 @@ class TerminalWidget(QWidget):
         max_offset = max(0, total_lines - visible_rows)
 
         if delta > 0:
-            self._scroll_offset = max(0, self._scroll_offset - scroll_lines)
-        else:
             self._scroll_offset = min(max_offset, self._scroll_offset + scroll_lines)
+        else:
+            self._scroll_offset = max(0, self._scroll_offset - scroll_lines)
 
         self._scrollbar.blockSignals(True)
         self._scrollbar.setValue(self._scroll_offset)
         self._scrollbar.blockSignals(False)
         self.update()
+        event.accept()
 
     def _update_scrollbar(self):
         total_lines = self._total_lines()
@@ -1429,9 +1440,9 @@ class TerminalWidget(QWidget):
         y = pos.y()
         h = self.height()
         if y < margin:
-            self._auto_scroll_delta = -max(1, (margin - y) // (self._cell_h // 2))
+            self._auto_scroll_delta = max(1, (margin - y) // (self._cell_h // 2))
         elif y > h - margin:
-            self._auto_scroll_delta = max(1, (y - (h - margin)) // (self._cell_h // 2))
+            self._auto_scroll_delta = -max(1, (y - (h - margin)) // (self._cell_h // 2))
         else:
             self._auto_scroll_delta = 0
 

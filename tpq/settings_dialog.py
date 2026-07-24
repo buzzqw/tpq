@@ -50,6 +50,7 @@ class SettingsDialog(QDialog):
 
         layout.addRow(QLabel("<b>Title</b>"))
         self._initial_title = QLineEdit(self._settings.get("tab_title", "Terminal"))
+        self._initial_title.setToolTip("Default name displayed on each new tab")
         layout.addRow("Initial title:", self._initial_title)
 
         self._dynamic_title = QComboBox()
@@ -59,6 +60,13 @@ class SettingsDialog(QDialog):
             "Goes after initial title",
             "Isn't displayed",
         ])
+        self._dynamic_title.setToolTip(
+            "How to combine a title set by the shell (OSC escape) with the initial title:\n"
+            "- Replace: use only the shell title\n"
+            "- Goes before: shell title | initial title\n"
+            "- Goes after: initial title | shell title\n"
+            "- Isn't displayed: always show the initial title"
+        )
         dyn_map = {"replace": 0, "before": 1, "after": 2, "hide": 3}
         self._dynamic_title.setCurrentIndex(
             dyn_map.get(self._settings.get("dynamic_title", "replace"), 0)
@@ -70,9 +78,11 @@ class SettingsDialog(QDialog):
 
         self._login_shell = QCheckBox()
         self._login_shell.setChecked(self._settings.get("login_shell", True))
+        self._login_shell.setToolTip("Start the shell as a login shell (loads .profile / .bash_profile)")
         layout.addRow("Run command as login shell:", self._login_shell)
 
         self._shell_edit = QLineEdit(self._settings.get("shell_command", "/bin/bash"))
+        self._shell_edit.setToolTip("Custom shell command or path. Use $SHELL for the default shell")
         layout.addRow("Run custom command:", self._shell_edit)
 
         layout.addRow(QLabel(""))
@@ -80,6 +90,7 @@ class SettingsDialog(QDialog):
 
         self._scrollbar_pos = QComboBox()
         self._scrollbar_pos.addItems(["Right side", "Left side", "Disabled"])
+        self._scrollbar_pos.setToolTip("Position of the scrollbar or disable it entirely")
         pos_map = {"right": 0, "left": 1, "disabled": 2}
         self._scrollbar_pos.setCurrentIndex(
             pos_map.get(self._settings.get("scrollbar_position", "right"), 0)
@@ -91,18 +102,21 @@ class SettingsDialog(QDialog):
         self._scrollback_spin.setSpecialValueText("Unlimited")
         self._scrollback_spin.setSingleStep(500)
         self._scrollback_spin.setValue(self._settings.get("scrollback_lines", 5000))
+        self._scrollback_spin.setToolTip("Maximum number of lines kept in the scrollback buffer (0 = unlimited)")
         layout.addRow("Scrollback lines:", self._scrollback_spin)
 
         self._scroll_on_output = QCheckBox()
         self._scroll_on_output.setChecked(
             self._settings.get("scroll_on_output", True)
         )
+        self._scroll_on_output.setToolTip("Automatically scroll to the bottom when new output appears")
         layout.addRow("Scroll on output:", self._scroll_on_output)
 
         self._scroll_on_keystroke = QCheckBox()
         self._scroll_on_keystroke.setChecked(
             self._settings.get("scroll_on_keystroke", True)
         )
+        self._scroll_on_keystroke.setToolTip("Automatically scroll to the bottom when typing")
         layout.addRow("Scroll on keystroke:", self._scroll_on_keystroke)
 
         layout.addRow(QLabel(""))
@@ -110,22 +124,25 @@ class SettingsDialog(QDialog):
 
         self._confirm_close = QCheckBox()
         self._confirm_close.setChecked(self._settings.get("confirm_close", True))
+        self._confirm_close.setToolTip("Ask for confirmation before closing the window")
         layout.addRow("Confirm before closing:", self._confirm_close)
 
         self._auto_copy_sel = QCheckBox()
         self._auto_copy_sel.setChecked(self._settings.get("auto_copy_selection", True))
+        self._auto_copy_sel.setToolTip("Automatically copy selected text to the clipboard")
         layout.addRow("Auto-copy selection:", self._auto_copy_sel)
 
         self._unsafe_paste = QCheckBox()
         self._unsafe_paste.setChecked(
             self._settings.get("show_unsafe_paste_dialog", True)
         )
+        self._unsafe_paste.setToolTip("Warn before pasting multi-line text that may contain harmful commands")
         layout.addRow("Show unsafe paste dialog:", self._unsafe_paste)
 
         fm_layout = QHBoxLayout()
         self._file_manager = QLineEdit(self._settings.get("file_manager", ""))
         self._file_manager.setPlaceholderText("auto-detect")
-        fm_layout.addWidget(self._file_manager)
+        self._file_manager.setToolTip("Override the file manager (e.g., nemo, thunar, dolphin). Leave blank to auto-detect")
         layout.addRow("File manager:", fm_layout)
 
         scroll.setWidget(content)

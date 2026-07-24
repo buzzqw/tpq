@@ -39,17 +39,20 @@ def create_menubar(parent, terminal_widget):
 
     new_tab_action = QAction("New &Tab", parent)
     new_tab_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
+    new_tab_action.setToolTip("Open a new terminal tab in the current window")
     new_tab_action.triggered.connect(parent.new_tab)
     file_menu.addAction(new_tab_action)
 
     new_window_action = QAction("New &Window", parent)
     new_window_action.setShortcut(QKeySequence("Ctrl+Shift+N"))
+    new_window_action.setToolTip("Open a new TPQ terminal window")
     new_window_action.triggered.connect(parent.new_window)
     file_menu.addAction(new_window_action)
 
     file_menu.addSeparator()
 
     open_fm_action = QAction("Open File Manager &Here", parent)
+    open_fm_action.setToolTip("Open the file manager in the current terminal working directory")
     open_fm_action.triggered.connect(parent.open_file_manager)
     file_menu.addAction(open_fm_action)
 
@@ -57,11 +60,13 @@ def create_menubar(parent, terminal_widget):
 
     close_tab_action = QAction("Close Tab", parent)
     close_tab_action.setShortcut(QKeySequence("Ctrl+Shift+W"))
+    close_tab_action.setToolTip("Close the current terminal tab")
     close_tab_action.triggered.connect(parent.close_tab)
     file_menu.addAction(close_tab_action)
 
     close_window_action = QAction("Close &Window", parent)
     close_window_action.setShortcut(QKeySequence("Ctrl+Shift+Q"))
+    close_window_action.setToolTip("Close the current window")
     close_window_action.triggered.connect(parent.close)
     file_menu.addAction(close_window_action)
 
@@ -69,6 +74,7 @@ def create_menubar(parent, terminal_widget):
 
     quit_action = QAction("&Quit", parent)
     quit_action.setShortcut(QKeySequence("Ctrl+Q"))
+    quit_action.setToolTip("Quit TPQ (close all windows)")
     quit_action.triggered.connect(parent.close)
     file_menu.addAction(quit_action)
 
@@ -76,15 +82,18 @@ def create_menubar(parent, terminal_widget):
 
     copy_action = QAction("&Copy", parent)
     copy_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
+    copy_action.setToolTip("Copy selected text to clipboard")
     copy_action.triggered.connect(parent.terminal_copy)
     edit_menu.addAction(copy_action)
 
     paste_action = QAction("&Paste", parent)
     paste_action.setShortcut(QKeySequence("Ctrl+Shift+V"))
+    paste_action.setToolTip("Paste clipboard content into the terminal")
     paste_action.triggered.connect(parent.terminal_paste)
     edit_menu.addAction(paste_action)
 
     paste_sel_action = QAction("Paste &Selection", parent)
+    paste_sel_action.setToolTip("Paste the primary selection (middle-click paste) into the terminal")
     paste_sel_action.triggered.connect(parent.terminal_paste_selection)
     edit_menu.addAction(paste_sel_action)
 
@@ -92,12 +101,14 @@ def create_menubar(parent, terminal_widget):
 
     select_all_action = QAction("Select &All", parent)
     select_all_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
+    select_all_action.setToolTip("Select all text in the terminal")
     select_all_action.triggered.connect(parent.terminal_select_all)
     edit_menu.addAction(select_all_action)
 
     edit_menu.addSeparator()
 
     preferences_action = QAction("&Preferences...", parent)
+    preferences_action.setToolTip("Open the TPQ settings dialog")
     preferences_action.triggered.connect(parent.open_settings)
     edit_menu.addAction(preferences_action)
 
@@ -106,6 +117,7 @@ def create_menubar(parent, terminal_widget):
     show_tabs_action = QAction("Always Show &Tabs", parent)
     show_tabs_action.setCheckable(True)
     show_tabs_action.setChecked(parent._tabs.isVisible() if hasattr(parent, "_tabs") else False)
+    show_tabs_action.setToolTip("Show the tab bar even when only one tab is open")
     show_tabs_action.triggered.connect(parent.toggle_tabs_visibility)
     view_menu.addAction(show_tabs_action)
     parent._action_show_tabs = show_tabs_action
@@ -113,6 +125,7 @@ def create_menubar(parent, terminal_widget):
     show_menubar_action = QAction("Always Show &Menu Bar", parent)
     show_menubar_action.setCheckable(True)
     show_menubar_action.setChecked(True)
+    show_menubar_action.setToolTip("Keep the menu bar always visible (press Alt to toggle)")
     show_menubar_action.triggered.connect(parent.toggle_menubar_visibility)
     view_menu.addAction(show_menubar_action)
     parent._action_show_menubar = show_menubar_action
@@ -120,6 +133,7 @@ def create_menubar(parent, terminal_widget):
     show_scrollbar_action = QAction("Always Show &Scrollbar", parent)
     show_scrollbar_action.setCheckable(True)
     show_scrollbar_action.setChecked(True)
+    show_scrollbar_action.setToolTip("Always show the vertical scrollbar")
     show_scrollbar_action.triggered.connect(parent.toggle_scrollbar_visibility)
     view_menu.addAction(show_scrollbar_action)
     parent._action_show_scrollbar = show_scrollbar_action
@@ -127,6 +141,7 @@ def create_menubar(parent, terminal_widget):
     show_toolbar_action = QAction("Always Show &Toolbar", parent)
     show_toolbar_action.setCheckable(True)
     show_toolbar_action.setChecked(parent._toolbar.isVisible() if hasattr(parent, "_toolbar") else False)
+    show_toolbar_action.setToolTip("Always show the main toolbar")
     show_toolbar_action.triggered.connect(parent.toggle_toolbar_visibility)
     view_menu.addAction(show_toolbar_action)
     parent._action_show_toolbar = show_toolbar_action
@@ -136,6 +151,7 @@ def create_menubar(parent, terminal_widget):
     fullscreen_action = QAction("&Full Screen", parent)
     fullscreen_action.setShortcut(QKeySequence("F11"))
     fullscreen_action.setCheckable(True)
+    fullscreen_action.setToolTip("Toggle full-screen mode")
     fullscreen_action.triggered.connect(parent.toggle_fullscreen)
     view_menu.addAction(fullscreen_action)
 
@@ -143,16 +159,19 @@ def create_menubar(parent, terminal_widget):
 
     zoom_in_action = QAction("Zoom &In", parent)
     zoom_in_action.setShortcut(QKeySequence("Ctrl+Plus"))
+    zoom_in_action.setToolTip("Increase terminal font size")
     zoom_in_action.triggered.connect(parent.zoom_in)
     view_menu.addAction(zoom_in_action)
 
     zoom_out_action = QAction("Zoom &Out", parent)
     zoom_out_action.setShortcut(QKeySequence("Ctrl+-"))
+    zoom_out_action.setToolTip("Decrease terminal font size")
     zoom_out_action.triggered.connect(parent.zoom_out)
     view_menu.addAction(zoom_out_action)
 
     zoom_reset_action = QAction("Zoom &Reset", parent)
     zoom_reset_action.setShortcut(QKeySequence("Ctrl+0"))
+    zoom_reset_action.setToolTip("Reset terminal font size to default")
     zoom_reset_action.triggered.connect(parent.zoom_reset)
     view_menu.addAction(zoom_reset_action)
 
@@ -160,6 +179,7 @@ def create_menubar(parent, terminal_widget):
 
     set_title_action = QAction("Set &Title...", parent)
     set_title_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+    set_title_action.setToolTip("Set a custom title for the current tab")
     set_title_action.triggered.connect(parent.set_title_dialog)
     terminal_menu.addAction(set_title_action)
 
@@ -172,17 +192,27 @@ def create_menubar(parent, terminal_widget):
         enc_name = label.split(" ")[0]
         enc_action = QAction(label, parent)
         enc_action.setCheckable(True)
+        enc_action.setToolTip(f"Set terminal character encoding to {enc_name}")
         enc_action.triggered.connect(
             lambda checked, e=enc_name: parent.set_encoding(e)
         )
         encoding_menu.addAction(enc_action)
     parent._encoding_actions = encoding_menu.actions()
 
+    cur_enc = parent._settings.get("encoding", "UTF-8")
+    for action in parent._encoding_actions:
+        if not action.isVisible():
+            continue
+        if action.text().startswith(cur_enc):
+            action.setChecked(True)
+            break
+
     terminal_menu.addSeparator()
 
     signal_menu = terminal_menu.addMenu("Send &Signal")
     for label, sig in SIGNALS:
         sig_action = QAction(label, parent)
+        sig_action.setToolTip(f"Send {label} to the foreground process in the current terminal")
         sig_action.triggered.connect(
             lambda checked, s=sig: parent.send_signal(s)
         )
@@ -192,11 +222,13 @@ def create_menubar(parent, terminal_widget):
 
     reset_action = QAction("&Reset", parent)
     reset_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
+    reset_action.setToolTip("Soft reset the terminal emulator state")
     reset_action.triggered.connect(parent.reset_terminal)
     terminal_menu.addAction(reset_action)
 
     reset_clear_action = QAction("Reset and &Clear", parent)
     reset_clear_action.setShortcut(QKeySequence("Ctrl+Shift+X"))
+    reset_clear_action.setToolTip("Reset the terminal emulator and clear the scrollback buffer")
     reset_clear_action.triggered.connect(parent.reset_and_clear)
     terminal_menu.addAction(reset_clear_action)
 
@@ -204,6 +236,7 @@ def create_menubar(parent, terminal_widget):
 
     read_only_action = QAction("&Read-Only", parent)
     read_only_action.setCheckable(True)
+    read_only_action.setToolTip("Toggle read-only mode (blocks keyboard input to the terminal)")
     read_only_action.triggered.connect(parent.toggle_read_only)
     terminal_menu.addAction(read_only_action)
     parent._action_read_only = read_only_action
@@ -212,25 +245,30 @@ def create_menubar(parent, terminal_widget):
 
     prev_tab_action = QAction("Previous Tab", parent)
     prev_tab_action.setShortcut(QKeySequence("Ctrl+Page Up"))
+    prev_tab_action.setToolTip("Switch to the previous tab")
     prev_tab_action.triggered.connect(parent.prev_tab)
     terminal_menu.addAction(prev_tab_action)
 
     next_tab_action = QAction("Next Tab", parent)
     next_tab_action.setShortcut(QKeySequence("Ctrl+Page Down"))
+    next_tab_action.setToolTip("Switch to the next tab")
     next_tab_action.triggered.connect(parent.next_tab)
     terminal_menu.addAction(next_tab_action)
 
     move_tab_left_action = QAction("Move Tab &Left", parent)
     move_tab_left_action.setShortcut(QKeySequence("Ctrl+Shift+Page Up"))
+    move_tab_left_action.setToolTip("Move the current tab one position to the left")
     move_tab_left_action.triggered.connect(parent.move_tab_left)
     terminal_menu.addAction(move_tab_left_action)
 
     move_tab_right_action = QAction("Move Tab &Right", parent)
     move_tab_right_action.setShortcut(QKeySequence("Ctrl+Shift+Page Down"))
+    move_tab_right_action.setToolTip("Move the current tab one position to the right")
     move_tab_right_action.triggered.connect(parent.move_tab_right)
     terminal_menu.addAction(move_tab_right_action)
 
     detach_tab_action = QAction("&Detach Tab", parent)
+    detach_tab_action.setToolTip("Detach the current tab into a separate window")
     detach_tab_action.triggered.connect(parent.detach_tab)
     terminal_menu.addAction(detach_tab_action)
 
@@ -241,6 +279,7 @@ def create_menubar(parent, terminal_widget):
     help_menu = menubar.addMenu("&Help")
 
     about_action = QAction("&About", parent)
+    about_action.setToolTip("Show information about TPQ")
     about_action.triggered.connect(parent.show_about)
     help_menu.addAction(about_action)
 

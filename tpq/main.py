@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import (
     QMessageBox, QInputDialog,
     QToolBar, QLabel
 )
-from PyQt6.QtCore import Qt, QSize, QTimer
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, QSize, QTimer, QEvent
+from PyQt6.QtGui import QAction, QWheelEvent
 
 from tpq.settings import Settings
 from tpq.terminal import TerminalWidget
@@ -54,6 +54,8 @@ class MainWindow(QMainWindow):
         self._action_show_scrollbar = None
         self._action_read_only = None
         self._encoding_actions = []
+        self._tab_base_titles: dict = {}
+        self._next_tab_number = 1
 
         self.setCentralWidget(self._tabs)
 
@@ -63,17 +65,21 @@ class MainWindow(QMainWindow):
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._toolbar)
 
         tb_new_tab = self._toolbar.addAction("New Tab")
+        tb_new_tab.setToolTip("Open a new terminal tab (Ctrl+Shift+T)")
         tb_new_tab.triggered.connect(self.new_tab)
 
         tb_new_win = self._toolbar.addAction("New Window")
+        tb_new_win.setToolTip("Open a new TPQ terminal window (Ctrl+Shift+N)")
         tb_new_win.triggered.connect(self.new_window)
 
         self._toolbar.addSeparator()
 
         tb_copy = self._toolbar.addAction("Copy")
+        tb_copy.setToolTip("Copy selected text (Ctrl+Shift+C)")
         tb_copy.triggered.connect(self.terminal_copy)
 
         tb_paste = self._toolbar.addAction("Paste")
+        tb_paste.setToolTip("Paste from clipboard (Ctrl+Shift+V)")
         tb_paste.triggered.connect(self.terminal_paste)
 
         self._toolbar.addSeparator()
@@ -100,13 +106,25 @@ class MainWindow(QMainWindow):
             return w
         return None
 
+    def eventFilter(self, obj, event):
+        if obj == self._tabs and event.type() == QEvent.Type.Wheel:
+            term = self._current_terminal()
+            if term and isinstance(event, QWheelEvent):
+                term.wheelEvent(event)
+                return True
+        return super().eventFilter(obj, event)
+
     def _add_new_tab(self, cwd: str = None):
         term = TerminalWidget(self)
         term.command_executed.connect(self._on_command)
         term.title_changed.connect(self._on_title_changed)
         term.shell_exited.connect(lambda code: self._on_shell_exit(term))
 
-        idx = self._tabs.addTab(term, "Terminal")
+        base_name = self._settings.get("tab_title", "Terminal")
+        base_title = f"{base_name} {self._next_tab_number}"
+        self._next_tab_number += 1
+        self._tab_base_titles[term] = base_title
+        idx = self._tabs.addTab(term, base_title)
         self._tabs.setCurrentIndex(idx)
         term.setFocus()
         self._update_tabs_menu()
@@ -115,13 +133,37 @@ class MainWindow(QMainWindow):
         pass
 
     def _on_title_changed(self, title: str):
-        if title and self._tabs.count() == 1:
+        if not title:
+            return
+        term = self.sender()
+        if not isinstance(term, TerminalWidget):
+            return
+        idx = self._tabs.indexOf(term)
+        if idx < 0:
+            return
+
+        base = self._tab_base_titles.get(term, self._settings.get("tab_title", "Terminal"))
+        mode = self._settings.get("dynamic_title", "replace")
+
+        if mode == "replace":
+            display = title
+        elif mode == "before":
+            display = f"{title} | {base}"
+        elif mode == "after":
+            display = f"{base} | {title}"
+        else:  # hide
+            display = base
+
+        self._tabs.setTabText(idx, display)
+
+        if self._tabs.count() == 1:
             self.setWindowTitle(f"TPQ - {title}")
 
     def _on_tab_close(self, index: int):
         w = self._tabs.widget(index)
         if isinstance(w, TerminalWidget):
             w.close_terminal()
+        self._tab_base_titles.pop(w, None)
         self._tabs.removeTab(index)
         self._update_tabs_menu()
         if self._tabs.count() == 0:
@@ -318,6 +360,9 @@ class MainWindow(QMainWindow):
             idx = self._tabs.currentIndex()
             if idx >= 0:
                 self._tabs.setTabText(idx, title)
+                term = self._tabs.widget(idx)
+                if isinstance(term, TerminalWidget):
+                    self._tab_base_titles[term] = title
 
     def show_about(self):
         from PyQt6.QtWidgets import QMessageBox
@@ -372,6 +417,11 @@ class MainWindow(QMainWindow):
                 current = self._tabs.tabText(idx).split(" [")[0]
                 self._tabs.setTabText(idx, f"{current} [{encoding}]")
             self._settings.set("encoding", encoding)
+            for action in self._encoding_actions:
+                if action.isVisible() and action.text().startswith(encoding):
+                    action.setChecked(True)
+                elif action.isVisible():
+                    action.setChecked(False)
 
     def send_signal(self, sig: int):
         term = self._current_terminal()
@@ -390,8 +440,13 @@ class MainWindow(QMainWindow):
             term.update()
 
     def _apply_tab_colors(self):
-        color = self._settings.get("tab_title_color", "#ffffff")
-        active_color = self._settings.get("tab_active_title_color", "#ffffff")
+        sys_text = self.palette().color(self.palette().ColorRole.WindowText).name()
+        color = self._settings.get("tab_title_color", "")
+        active_color = self._settings.get("tab_active_title_color", "")
+        if color == "#ffffff" or not color:
+            color = sys_text
+        if active_color == "#ffffff" or not active_color:
+            active_color = sys_text
         self._tabs.setStyleSheet(
             f"QTabBar::tab {{ color: {color}; }}"
             f"QTabBar::tab:selected {{ color: {active_color}; font-weight: bold; }}"
@@ -541,6 +596,11 @@ class DetachedWindow(QMainWindow):
         current = self.windowTitle().split(" [")[0]
         self.setWindowTitle(f"{current} [{encoding}]")
         self._settings.set("encoding", encoding)
+        for action in self._encoding_actions:
+            if action.isVisible() and action.text().startswith(encoding):
+                action.setChecked(True)
+            elif action.isVisible():
+                action.setChecked(False)
 
     def send_signal(self, sig: int):
         term = self._terminal
