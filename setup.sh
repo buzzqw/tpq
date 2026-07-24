@@ -128,6 +128,9 @@ source "$VENV_DIR/bin/activate"
 echo "[4/5] Installing Python packages..."
 uv pip install --python "$VENV_DIR/bin/python" pyte requests PyQt6
 
+# Pre-compile bytecode so the first launch doesn't pay the compile cost.
+"$VENV_DIR/bin/python" -m compileall -q "$SCRIPT_DIR/tpq"
+
 # --- Create desktop menu entry (Linux only) ---
 echo "[5/5] Creating application menu entry..."
 if [ "$(uname -s)" = "Linux" ]; then

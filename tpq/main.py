@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QInputDialog,
     QToolBar, QLabel
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QAction
 
 from tpq.settings import Settings
@@ -84,12 +84,15 @@ class MainWindow(QMainWindow):
 
         self._toolbar.setVisible(self._settings.get("show_toolbar", False))
 
-        self._add_new_tab()
         self._apply_tab_colors()
 
         self.setMenuBar(create_menubar(self, self._current_terminal()))
         self._storage_menubar = self.menuBar()
         self._apply_window_opacity()
+
+        # Defer spawning the first shell until after the window is on screen,
+        # so the pty fork/exec doesn't delay the initial paint.
+        QTimer.singleShot(0, self._add_new_tab)
 
     def _current_terminal(self) -> TerminalWidget:
         w = self._tabs.currentWidget()
