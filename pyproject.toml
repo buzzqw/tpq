@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tpq"
+version = "1.0.0"
+description = "Terminale Python Qt - advanced terminal emulator"
+requires-python = ">=3.10"
+dependencies = [
+    "PyQt6>=6.5",
+    "pyte>=0.8",
+    "requests>=2.28",
+]
+
+[project.scripts]
+tpq = "tpq.__main__:main"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
