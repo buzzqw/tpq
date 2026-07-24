@@ -1,5 +1,11 @@
 # TPQ — Manuale d'Uso
 
+> **Stato del progetto:** TPQ e' in fase di sviluppo attivo ed e' da
+> considerarsi **beta**. L'uso base del terminale, la history, le note e la
+> chat AI con Ollama sono testati regolarmente; gli altri provider AI e alcuni
+> casi limite lo sono meno. Aspettati qualche imperfezione e segnala pure i
+> problemi che incontri.
+
 ## Indice
 
 1. [Avvio Rapido](#1-avvio-rapido)
@@ -116,7 +122,7 @@ Mostra la lista di tutti i comandi TPQ disponibili.
 
 ### /clear
 
-Pulisce lo schermo del terminale.
+Pulisce lo schermo del terminale. Alias: `/cls`.
 
 ### Autocompletamento con Tab
 
@@ -137,14 +143,19 @@ Quando scrivi un comando TPQ, premi `Tab` per autocompletare:
 
 ### 4.1 Provider Supportati
 
-| Provider | Tipo | API Key Necessaria |
-|----------|------|--------------------|
-| OpenAI | Cloud (GPT-4o) | Si |
-| Claude (Anthropic) | Cloud (Sonnet) | Si |
-| Google Gemini | Cloud (Flash) | Si |
-| DeepSeek | Cloud | Si |
-| Ollama | Locale | No |
-| Custom API | Locale/Remoto | Opzionale |
+| Provider | Tipo | Modello predefinito | API Key Necessaria |
+|----------|------|----------------------|--------------------|
+| OpenAI | Cloud | `gpt-4o` | Si |
+| Claude (Anthropic) | Cloud | `claude-sonnet-4-20250514` | Si |
+| Google Gemini | Cloud | `gemini-2.5-flash` | Si |
+| DeepSeek | Cloud | `deepseek-chat` | Si |
+| Ollama | Locale | `llama3` (auto-rileva quelli installati) | No |
+| Custom API | Locale/Remoto | configurabile | Opzionale |
+
+Tutti i provider rispondono in streaming, token per token, **eccetto Gemini**:
+l'API REST `generateContent` di Google usata da TPQ non e' incrementale, quindi
+la risposta di Gemini compare tutta insieme invece che carattere per carattere
+come per gli altri provider.
 
 ### 4.2 Configurazione
 
@@ -310,6 +321,33 @@ Editor configurabile in `Preferences > Notes > Editor command` (default: `nano`)
 
 `View > Full Screen` o `F11`.
 
+### 7.4 Tutte le Scorciatoie da Tastiera
+
+| Scorciatoia | Azione |
+|-------------|--------|
+| `Ctrl+Shift+T` | Nuovo Tab |
+| `Ctrl+Shift+N` | Nuova Finestra |
+| `Ctrl+Shift+W` | Chiudi Tab |
+| `Ctrl+Shift+Q` / `Ctrl+Q` | Chiudi Finestra |
+| `Ctrl+Shift+C` | Copia |
+| `Ctrl+Shift+V` | Incolla |
+| `Ctrl+Shift+A` | Seleziona Tutto |
+| `Ctrl+Shift+S` | Imposta Titolo |
+| `Ctrl+Shift+R` | Reset Terminale |
+| `Ctrl+Shift+X` | Reset e Pulisci |
+| `Ctrl+Plus` / `Ctrl+-` / `Ctrl+0` | Zoom In / Out / Reset |
+| `Ctrl+R` | Ricerca history interattiva |
+| `Ctrl+L` | Pulisci schermo |
+| `Ctrl+C` | Interrompi (SIGINT) |
+| `Ctrl+D` | EOF (a riga vuota) |
+| `Ctrl+U` | Cancella riga |
+| `Ctrl+W` | Cancella parola |
+| `F11` | Fullscreen |
+| `Ctrl+PageUp` / `Ctrl+PageDown` | Tab Precedente / Successivo |
+| `Ctrl+Shift+PageUp` / `Ctrl+Shift+PageDown` | Sposta Tab a Sx / Dx |
+| `Alt+1..9` | Seleziona provider/modello/risultato history |
+| `1..9` (senza Alt) | Seleziona da una lista interattiva gia' aperta (es. dopo `/connect` o `/history`) |
+
 ---
 
 ## 8. Preferenze
@@ -334,8 +372,9 @@ Editor configurabile in `Preferences > Notes > Editor command` (default: `nano`)
 ### Colors
 - Palette 16 colori ANSI (black, red, green, yellow, blue, magenta, cyan, white + bright)
 - Griglia 4x4 con color picker
-- Preset: Dark, Light, Solarized Dark, Monokai, Nord
-- Load, Save, Reset to Default
+- Preset: Dark (default), Light, Solarized Dark, Solarized Light, Monokai,
+  Gruvbox Dark, Nord
+- Load Preset, Save As, Reset to Default
 
 ### Compatibility
 - Backspace: ASCII DEL, Control-H, Escape sequence, Auto
@@ -478,4 +517,4 @@ Tab                    Autocompleta comandi TPQ (/hist → /history)
 
 Licensed under the **European Union Public Licence (EUPL) 1.2**.
 
-https://github.com/anomalyco/tpq
+https://github.com/buzzqw/tpq

@@ -70,7 +70,7 @@ source "$VENV_DIR/bin/activate"
 
 # --- Install Python packages ---
 echo "[4/4] Installing Python packages..."
-uv pip install --python "$VENV_DIR/bin/python" pyte requests PyQt6 Pillow
+uv pip install --python "$VENV_DIR/bin/python" pyte requests PyQt6
 
 echo ""
 echo "========================================"

@@ -316,7 +316,7 @@ class MainWindow(QMainWindow):
             "<hr>"
             "<p><b>Author:</b> Andres Zanzani</p>"
             "<p><b>License:</b> EUPL 1.2 (European Union Public License)</p>"
-            "<p><a href='https://github.com/anomalyco/tpq'>github.com/anomalyco/tpq</a></p>"
+            "<p><a href='https://github.com/buzzqw/tpq'>github.com/buzzqw/tpq</a></p>"
         )
 
     def closeEvent(self, event):
@@ -399,7 +399,6 @@ class DetachedWindow(QMainWindow):
         self._settings = Settings()
         self._terminal = terminal
         self._terminal.setParent(self)
-        self._tabs = parent._tabs if hasattr(parent, '_tabs') else QTabWidget()
         self._tabs_menu = None
         self._action_show_tabs = None
         self._action_show_menubar = None
@@ -502,7 +501,7 @@ class DetachedWindow(QMainWindow):
             "<h2>TPQ Terminal v1.0.0</h2>"
             "<p><b>Author:</b> Andres Zanzani</p>"
             "<p><b>License:</b> EUPL 1.2</p>"
-            "<p>github.com/anomalyco/tpq</p>"
+            "<p>github.com/buzzqw/tpq</p>"
         )
 
     def open_file_manager(self):
